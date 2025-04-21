@@ -2,9 +2,33 @@ import bcrypt from 'bcryptjs';
 import postgres from 'postgres';
 import { invoices, customers, revenue, users } from '../lib/placeholder-data';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+// Don't initialize during build
+let sql: ReturnType<typeof postgres> | null = null;
 
-async function seedUsers(sqlClient = sql) {
+// Check if running in a build environment
+const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                   process.env.NEXT_BUILD_ENV === 'production';
+
+// Lazy initialize the SQL client
+function getSqlClient() {
+  // Skip initialization during build
+  if (isBuildTime) {
+    console.log('Build-time SQL initialization skipped in seed route');
+    return null;
+  }
+  
+  if (!sql) {
+    // Only initialize in a runtime environment
+    try {
+      sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+    } catch (error) {
+      console.error('Failed to initialize database connection:', error);
+    }
+  }
+  return sql;
+}
+
+async function seedUsers(sqlClient: ReturnType<typeof postgres>) {
   await sqlClient`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
   await sqlClient`
     CREATE TABLE IF NOT EXISTS users (
@@ -29,7 +53,7 @@ async function seedUsers(sqlClient = sql) {
   return insertedUsers;
 }
 
-async function seedInvoices(sqlClient = sql) {
+async function seedInvoices(sqlClient: ReturnType<typeof postgres>) {
   await sqlClient`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
 
   await sqlClient`
@@ -55,7 +79,7 @@ async function seedInvoices(sqlClient = sql) {
   return insertedInvoices;
 }
 
-async function seedCustomers(sqlClient = sql) {
+async function seedCustomers(sqlClient: ReturnType<typeof postgres>) {
   await sqlClient`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
 
   await sqlClient`
@@ -80,7 +104,7 @@ async function seedCustomers(sqlClient = sql) {
   return insertedCustomers;
 }
 
-async function seedRevenue(sqlClient = sql) {
+async function seedRevenue(sqlClient: ReturnType<typeof postgres>) {
   await sqlClient`
     CREATE TABLE IF NOT EXISTS revenue (
       month VARCHAR(4) NOT NULL UNIQUE,
@@ -103,7 +127,12 @@ async function seedRevenue(sqlClient = sql) {
 
 export async function GET() {
   try {
-    await sql.begin(async (sqlTransaction) => {
+    const client = getSqlClient();
+    if (!client) {
+      return Response.json({ message: 'Skipping database seed during build' }, { status: 200 });
+    }
+    
+    await client.begin(async (sqlTransaction) => {
       await seedUsers(sqlTransaction);
       await seedCustomers(sqlTransaction);
       await seedInvoices(sqlTransaction);
