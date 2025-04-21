@@ -2,13 +2,28 @@ import postgres from 'postgres';
 import { CustomerField, CustomersTableType, InvoiceForm, InvoicesTable, LatestInvoiceRaw, Revenue } from './definitions';
 import { formatCurrency } from './utils';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+// Initialize SQL connection with proper typing
+const sqlClient = () => {
+  try {
+    return postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+  } catch (error) {
+    console.error('Failed to initialize database connection:', error);
+    return null;
+  }
+};
+
+// Create a typed SQL client
+const sql = sqlClient();
 
 export async function fetchRevenue() {
   try {
+    // Check if sql is initialized
+    if (!sql) {
+      throw new Error('Database connection not established');
+    }
+    
     // Artificially delay a response for demo purposes.
     // Don't do this in production :)
-
     console.log('Fetching revenue data...');
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
@@ -25,6 +40,9 @@ export async function fetchRevenue() {
 
 export async function fetchLatestInvoices() {
   try {
+    if (!sql) {
+      throw new Error('Database connection not established');
+    }
     const data = await sql<LatestInvoiceRaw[]>`
       SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
@@ -32,7 +50,7 @@ export async function fetchLatestInvoices() {
       ORDER BY invoices.date DESC
       LIMIT 5`;
 
-    const latestInvoices = data.map((invoice) => ({
+    const latestInvoices = data.map((invoice: LatestInvoiceRaw) => ({
       ...invoice,
       amount: formatCurrency(invoice.amount),
     }));
@@ -45,6 +63,11 @@ export async function fetchLatestInvoices() {
 
 export async function fetchCardData() {
   try {
+    // Check if sql is initialized
+    if (!sql) {
+      throw new Error('Database connection not established');
+    }
+    
     // You can probably combine these into a single SQL query
     // However, we are intentionally splitting them to demonstrate
     // how to initialize multiple queries in parallel with JS.
@@ -86,6 +109,9 @@ export async function fetchFilteredInvoices(
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
+    if (!sql) {
+      throw new Error('Database connection not established');
+    }
     const invoices = await sql<InvoicesTable[]>`
       SELECT
         invoices.id,
@@ -116,6 +142,9 @@ export async function fetchFilteredInvoices(
 
 export async function fetchInvoicesPages(query: string) {
   try {
+    if (!sql) {
+      throw new Error('Database connection not established');
+    }
     const data = await sql`SELECT COUNT(*)
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
@@ -137,6 +166,9 @@ export async function fetchInvoicesPages(query: string) {
 
 export async function fetchInvoiceById(id: string) {
   try {
+    if (!sql) {
+      throw new Error('Database connection not established');
+    }
     const data = await sql<InvoiceForm[]>`
       SELECT
         invoices.id,
@@ -147,7 +179,7 @@ export async function fetchInvoiceById(id: string) {
       WHERE invoices.id = ${id};
     `;
 
-    const invoice = data.map((invoice) => ({
+    const invoice = data.map((invoice: InvoiceForm) => ({
       ...invoice,
       // Convert amount from cents to dollars
       amount: invoice.amount / 100,
@@ -162,6 +194,9 @@ export async function fetchInvoiceById(id: string) {
 
 export async function fetchCustomers() {
   try {
+    if (!sql) {
+      throw new Error('Database connection not established');
+    }
     const customers = await sql<CustomerField[]>`
       SELECT
         id,
@@ -179,6 +214,9 @@ export async function fetchCustomers() {
 
 export async function fetchFilteredCustomers(query: string) {
   try {
+    if (!sql) {
+      throw new Error('Database connection not established');
+    }
     const data = await sql<CustomersTableType[]>`
 		SELECT
 		  customers.id,
@@ -197,7 +235,7 @@ export async function fetchFilteredCustomers(query: string) {
 		ORDER BY customers.name ASC
 	  `;
 
-    const customers = data.map((customer) => ({
+    const customers = data.map((customer: CustomersTableType) => ({
       ...customer,
       total_pending: formatCurrency(customer.total_pending),
       total_paid: formatCurrency(customer.total_paid),
