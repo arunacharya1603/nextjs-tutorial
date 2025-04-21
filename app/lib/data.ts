@@ -2,23 +2,36 @@ import postgres from 'postgres';
 import { CustomerField, CustomersTableType, InvoiceForm, InvoicesTable, LatestInvoiceRaw, Revenue } from './definitions';
 import { formatCurrency } from './utils';
 
-// Initialize SQL connection with proper typing
-const sqlClient = () => {
-  try {
-    return postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
-  } catch (error) {
-    console.error('Failed to initialize database connection:', error);
+// Don't initialize during build
+let sql: ReturnType<typeof postgres> | null = null;
+
+// Check if running in a build environment
+const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                   process.env.NEXT_BUILD_ENV === 'production';
+
+// Lazy initialize the SQL client
+function getSqlClient() {
+  // Skip initialization during build
+  if (isBuildTime) {
+    console.log('Build-time SQL initialization skipped');
     return null;
   }
-};
-
-// Create a typed SQL client
-const sql = sqlClient();
+  
+  if (!sql) {
+    // Only initialize in a runtime environment
+    try {
+      sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+    } catch (error) {
+      console.error('Failed to initialize database connection:', error);
+    }
+  }
+  return sql;
+}
 
 export async function fetchRevenue() {
   try {
-    // Check if sql is initialized
-    if (!sql) {
+    const client = getSqlClient();
+    if (!client) {
       throw new Error('Database connection not established');
     }
     
@@ -27,7 +40,7 @@ export async function fetchRevenue() {
     console.log('Fetching revenue data...');
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const data = await sql<Revenue[]>`SELECT * FROM revenue`;
+    const data = await client<Revenue[]>`SELECT * FROM revenue`;
 
     console.log('Data fetch completed after 3 seconds.');
 
@@ -40,10 +53,11 @@ export async function fetchRevenue() {
 
 export async function fetchLatestInvoices() {
   try {
-    if (!sql) {
+    const client = getSqlClient();
+    if (!client) {
       throw new Error('Database connection not established');
     }
-    const data = await sql<LatestInvoiceRaw[]>`
+    const data = await client<LatestInvoiceRaw[]>`
       SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
@@ -63,17 +77,17 @@ export async function fetchLatestInvoices() {
 
 export async function fetchCardData() {
   try {
-    // Check if sql is initialized
-    if (!sql) {
+    const client = getSqlClient();
+    if (!client) {
       throw new Error('Database connection not established');
     }
     
     // You can probably combine these into a single SQL query
     // However, we are intentionally splitting them to demonstrate
     // how to initialize multiple queries in parallel with JS.
-    const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
-    const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
-    const invoiceStatusPromise = sql`SELECT
+    const invoiceCountPromise = client`SELECT COUNT(*) FROM invoices`;
+    const customerCountPromise = client`SELECT COUNT(*) FROM customers`;
+    const invoiceStatusPromise = client`SELECT
          SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
          SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
          FROM invoices`;
@@ -109,10 +123,11 @@ export async function fetchFilteredInvoices(
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
-    if (!sql) {
+    const client = getSqlClient();
+    if (!client) {
       throw new Error('Database connection not established');
     }
-    const invoices = await sql<InvoicesTable[]>`
+    const invoices = await client<InvoicesTable[]>`
       SELECT
         invoices.id,
         invoices.amount,
@@ -142,10 +157,11 @@ export async function fetchFilteredInvoices(
 
 export async function fetchInvoicesPages(query: string) {
   try {
-    if (!sql) {
+    const client = getSqlClient();
+    if (!client) {
       throw new Error('Database connection not established');
     }
-    const data = await sql`SELECT COUNT(*)
+    const data = await client`SELECT COUNT(*)
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
     WHERE
@@ -166,10 +182,11 @@ export async function fetchInvoicesPages(query: string) {
 
 export async function fetchInvoiceById(id: string) {
   try {
-    if (!sql) {
+    const client = getSqlClient();
+    if (!client) {
       throw new Error('Database connection not established');
     }
-    const data = await sql<InvoiceForm[]>`
+    const data = await client<InvoiceForm[]>`
       SELECT
         invoices.id,
         invoices.customer_id,
@@ -194,10 +211,11 @@ export async function fetchInvoiceById(id: string) {
 
 export async function fetchCustomers() {
   try {
-    if (!sql) {
+    const client = getSqlClient();
+    if (!client) {
       throw new Error('Database connection not established');
     }
-    const customers = await sql<CustomerField[]>`
+    const customers = await client<CustomerField[]>`
       SELECT
         id,
         name
@@ -214,10 +232,11 @@ export async function fetchCustomers() {
 
 export async function fetchFilteredCustomers(query: string) {
   try {
-    if (!sql) {
+    const client = getSqlClient();
+    if (!client) {
       throw new Error('Database connection not established');
     }
-    const data = await sql<CustomersTableType[]>`
+    const data = await client<CustomersTableType[]>`
 		SELECT
 		  customers.id,
 		  customers.name,

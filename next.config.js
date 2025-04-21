@@ -6,6 +6,12 @@ const nextConfig = {
     // This setting enables proper runtime for server components
     serverComponentsExternalPackages: ['postgres'],
   },
+  // Disable static optimization
+  reactStrictMode: true,
+  staticPageGenerationTimeout: 1000,
+  compiler: {
+    styledComponents: true,
+  },
 };
 
 module.exports = nextConfig; 
